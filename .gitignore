@@ -12,6 +12,7 @@ backend_django/staticfiles/
 # Environment secrets
 .env
 .streamlit/secrets.toml
+frontend_streamlit/.streamlit/secrets.toml
 
 # Local agent configuration
 .agents/

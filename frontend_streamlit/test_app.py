@@ -1,15 +1,18 @@
-import os
+import base64
+import json
 import unittest
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, Mock, patch
 
 import requests
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 from ui import api_client
-from ui.api_client import get_history
+from ui.app_config import GroqSettings, SupabaseSettings
+from ui.errors import ApiError
 
 
 ROOT = Path(__file__).resolve().parent
@@ -20,6 +23,32 @@ METADATA = {
     "year_range": [1980, 2016],
     "average_sales_by_genre": {"Action": 0.5, "RPG": 0.8},
     "average_sales_by_platform": {"PS2": 0.8, "PS3": 0.6},
+    "sales_analysis": {
+        "genre_analysis": {
+            "category_name": "Genre",
+            "categories": [
+                {
+                    "category": "RPG",
+                    "average_global_sales": 0.8,
+                    "observations": 2,
+                }
+            ],
+            "total_observations": 4,
+            "year_range": [1980, 2016],
+        },
+        "platform_analysis": {
+            "category_name": "Platform",
+            "categories": [
+                {
+                    "category": "PS2",
+                    "average_global_sales": 0.8,
+                    "observations": 3,
+                }
+            ],
+            "total_observations": 4,
+            "year_range": [1980, 2016],
+        },
+    },
     "dataset_summary": {
         "cleaned_rows": 16288,
         "mean_global_sales": 0.54,
@@ -35,6 +64,21 @@ METADATA = {
         "clipped_metrics": {"r2": 0.095198, "rmse": 1.890928, "mae": 0.542939},
     },
 }
+PREDICTION = {
+    "game_title": "Test game",
+    "platform": "PS2",
+    "genre": "Action",
+    "publisher": "Nintendo",
+    "release_year": 2016,
+    "predicted_global_sales": 2.25,
+    "category": "Standard",
+    "created_at": "2025-01-01T10:00:00+00:00",
+}
+SUPABASE_SETTINGS = SupabaseSettings(
+    url="https://gamescope-test.supabase.co",
+    api_key="test-anon-key",
+    use_bearer_token=True,
+)
 
 
 def _rendered_chart_count(node):
@@ -45,7 +89,7 @@ def _rendered_chart_count(node):
     return count
 
 
-def _response(body, status=200):
+def _response(body=None, status=200):
     return SimpleNamespace(
         ok=200 <= status < 300,
         status_code=status,
@@ -53,99 +97,278 @@ def _response(body, status=200):
     )
 
 
+@contextmanager
+def _mock_app_services(
+    *,
+    history=None,
+    metadata=METADATA,
+    metadata_error=None,
+    predict_result=PREDICTION,
+    predict_error=None,
+    explanation="## Ringkasan\nAnalisis berdasarkan data aktual.",
+    explanation_error=None,
+):
+    with ExitStack() as stack:
+        metadata_mock = stack.enter_context(
+            patch(
+                "ui.api_client.get_metadata",
+                side_effect=metadata_error,
+                return_value=metadata,
+            )
+        )
+        history_mock = stack.enter_context(
+            patch(
+                "ui.api_client.get_history",
+                return_value=history if history is not None else [],
+            )
+        )
+        predict_mock = stack.enter_context(
+            patch(
+                "ui.api_client.predict",
+                side_effect=predict_error,
+                return_value=predict_result,
+            )
+        )
+        explanation_mock = stack.enter_context(
+            patch(
+                "ui.api_client.explain_market_analysis",
+                side_effect=explanation_error,
+                return_value=explanation,
+            )
+        )
+        yield {
+            "metadata": metadata_mock,
+            "history": history_mock,
+            "predict": predict_mock,
+            "explanation": explanation_mock,
+        }
+
+
 class StreamlitAppTests(unittest.TestCase):
     def setUp(self):
         st.cache_data.clear()
+        st.cache_resource.clear()
 
     def tearDown(self):
         st.cache_data.clear()
+        st.cache_resource.clear()
 
-    def test_api_url_prefers_environment_over_streamlit_secret(self):
-        with patch.dict(
-            os.environ, {"DJANGO_API_URL": "https://render.example/api/"}
+    def test_local_artifacts_supply_metadata_and_prediction(self):
+        from ui.local_inference import get_metadata, predict_locally
+
+        metadata = get_metadata()
+        self.assertEqual(metadata["dataset_summary"]["cleaned_rows"], 16288)
+        self.assertEqual(metadata["year_range"], [1980, 2016])
+        self.assertTrue(metadata["sales_analysis"]["genre_analysis"]["categories"])
+
+        result = predict_locally(
+            {
+                "game_title": "  Test game  ",
+                "platform": metadata["platforms"][0],
+                "genre": metadata["genres"][0],
+                "publisher": metadata["publishers"][0],
+                "release_year": metadata["year_range"][1],
+            }
+        )
+        self.assertEqual(result["game_title"], "Test game")
+        self.assertGreaterEqual(result["predicted_global_sales"], 0)
+        self.assertIn(result["category"], ("Niche", "Standard", "Blockbuster"))
+
+    def test_prediction_validation_rejects_unknown_values(self):
+        from ui.local_inference import predict_locally
+
+        payload = {
+            "game_title": "",
+            "platform": "unknown platform",
+            "genre": "Action",
+            "publisher": "Nintendo",
+            "release_year": 2016,
+        }
+        with self.assertRaisesRegex(ApiError, "Platform tidak tersedia"):
+            predict_locally(payload)
+
+    def test_prediction_facade_saves_local_result_to_history_service(self):
+        prediction = dict(PREDICTION)
+        with patch(
+            "ui.api_client.predict_locally", return_value=prediction
+        ) as infer, patch(
+            "ui.api_client.insert_prediction",
+            return_value="2025-01-01T10:00:00+00:00",
+        ) as insert:
+            result = api_client.predict({"platform": "PS2"})
+        infer.assert_called_once_with({"platform": "PS2"})
+        insert.assert_called_once_with(prediction)
+        self.assertEqual(result["created_at"], "2025-01-01T10:00:00+00:00")
+        self.assertEqual(result["category"], "Standard")
+
+    def test_supabase_postgrest_reads_latest_history_and_inserts_only(self):
+        from ui.supabase_rest import get_history, insert_prediction
+
+        history_row = {
+            "id": 31,
+            "created_at": "2025-01-01T10:00:00+00:00",
+            "game_title": "Existing game",
+            "platform": "PS2",
+            "genre": "Action",
+            "publisher": "Nintendo",
+            "release_year": 2016,
+            "predicted_global_sales": 2.25,
+        }
+        with patch(
+            "ui.supabase_rest.get_supabase_settings",
+            return_value=SUPABASE_SETTINGS,
         ), patch(
-            "ui.api_client.st",
-            SimpleNamespace(
-                secrets={"DJANGO_API_URL": "https://streamlit.example/api"}
-            ),
+            "ui.supabase_rest.requests.get",
+            return_value=_response([history_row]),
+        ) as get_request, patch(
+            "ui.supabase_rest.requests.post",
+            return_value=_response(status=201),
+        ) as post_request:
+            self.assertEqual(get_history(), [history_row])
+            created_at = insert_prediction(PREDICTION)
+
+        self.assertEqual(get_request.call_args.args[0], SUPABASE_SETTINGS.url + "/rest/v1/prediction_logs")
+        self.assertEqual(
+            get_request.call_args.kwargs["params"]["order"],
+            "created_at.desc,id.desc",
+        )
+        self.assertEqual(get_request.call_args.kwargs["params"]["limit"], "20")
+        self.assertEqual(post_request.call_count, 1)
+        self.assertEqual(post_request.call_args.args[0], SUPABASE_SETTINGS.url + "/rest/v1/prediction_logs")
+        sent_record = post_request.call_args.kwargs["json"]
+        self.assertEqual(sent_record["game_title"], "Test game")
+        self.assertEqual(sent_record["predicted_global_sales"], 2.25)
+        self.assertEqual(sent_record["created_at"], created_at)
+        self.assertNotIn("id", sent_record)
+        self.assertEqual(
+            post_request.call_args.kwargs["headers"]["Prefer"], "return=minimal"
+        )
+
+    def test_supabase_configuration_requires_https_and_rejects_service_key(self):
+        from ui.app_config import get_supabase_settings
+
+        with patch(
+            "ui.app_config._get_secret",
+            side_effect=lambda name: {
+                "SUPABASE_URL": "http://gamescope-test.supabase.co",
+                "SUPABASE_ANON_KEY": "public-key",
+            }.get(name, ""),
         ):
-            self.assertEqual(
-                api_client._get_api_base_url(), "https://render.example/api"
-            )
+            with self.assertRaisesRegex(ApiError, "HTTPS"):
+                get_supabase_settings()
 
-    def test_api_url_uses_streamlit_cloud_secret_when_environment_is_empty(self):
-        with patch.dict(os.environ, {"DJANGO_API_URL": ""}), patch(
-            "ui.api_client.st",
-            SimpleNamespace(
-                secrets={"DJANGO_API_URL": "https://render.example/api/"}
-            ),
+        claims = base64.urlsafe_b64encode(
+            json.dumps({"role": "service_role"}).encode("utf-8")
+        ).decode("ascii").rstrip("=")
+        service_key = f"header.{claims}.signature"
+        with patch(
+            "ui.app_config._get_secret",
+            side_effect=lambda name: {
+                "SUPABASE_URL": "https://gamescope-test.supabase.co",
+                "SUPABASE_ANON_KEY": service_key,
+            }.get(name, ""),
         ):
-            self.assertEqual(
-                api_client._get_api_base_url(), "https://render.example/api"
-            )
+            with self.assertRaisesRegex(ApiError, "service-role"):
+                get_supabase_settings()
 
-    def _get(self, history=None, fail=False):
-        def get(url, timeout):
-            if fail:
-                raise requests.ConnectionError("internal detail")
-            if url.endswith("/metadata/"):
-                return _response(METADATA)
-            return _response({"history": history or []})
+    def test_secrets_accept_publishable_key_and_report_missing_values(self):
+        from ui.app_config import get_groq_settings, get_supabase_settings
 
-        return get
+        with patch(
+            "ui.app_config._get_secret",
+            side_effect=lambda name: {
+                "SUPABASE_URL": "https://gamescope-test.supabase.co/",
+                "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_test",
+            }.get(name, ""),
+        ):
+            settings = get_supabase_settings()
+        self.assertEqual(settings.url, "https://gamescope-test.supabase.co")
+        self.assertFalse(settings.use_bearer_token)
 
-    def test_history_refetches_after_an_admin_deletion(self):
-        responses = [
-            _response({"history": [{"id": 1}]}),
-            _response({"history": []}),
-        ]
-        with patch("requests.get", side_effect=responses) as get_request:
-            self.assertEqual(get_history(), [{"id": 1}])
+        with patch("ui.app_config._get_secret", return_value=""):
+            with self.assertRaisesRegex(ApiError, "SUPABASE_URL"):
+                get_supabase_settings()
+            with self.assertRaisesRegex(ApiError, "GROQ_API_KEY"):
+                get_groq_settings()
+
+    def test_supabase_access_denial_is_informative_and_does_not_expose_response(self):
+        from ui.supabase_rest import get_history
+
+        response = _response({"message": "private internal response"}, status=403)
+        with patch(
+            "ui.supabase_rest.get_supabase_settings",
+            return_value=SUPABASE_SETTINGS,
+        ), patch("ui.supabase_rest.requests.get", return_value=response):
+            with self.assertRaises(ApiError) as raised:
+                get_history()
+        self.assertIn("RLS", str(raised.exception))
+        self.assertNotIn("private internal response", str(raised.exception))
+
+    def test_history_is_refetched_instead_of_cached(self):
+        from ui.supabase_rest import get_history
+
+        row = {
+            "id": 1,
+            "created_at": "2025-01-01T10:00:00+00:00",
+            "game_title": "Test",
+            "platform": "PS2",
+            "genre": "Action",
+            "publisher": "Nintendo",
+            "release_year": 2016,
+            "predicted_global_sales": 1.0,
+        }
+        with patch(
+            "ui.supabase_rest.get_supabase_settings",
+            return_value=SUPABASE_SETTINGS,
+        ), patch(
+            "ui.supabase_rest.requests.get",
+            side_effect=[_response([row]), _response([])],
+        ) as get_request:
+            self.assertEqual(get_history(), [row])
             self.assertEqual(get_history(), [])
         self.assertEqual(get_request.call_count, 2)
 
-    def test_home_displays_actual_summary_and_local_illustration(self):
-        with patch("requests.get", side_effect=self._get()), patch(
-            "requests.post"
-        ) as post_request:
-            app = AppTest.from_file(str(ROOT / "app.py")).run(timeout=30)
-            self.assertFalse(app.exception)
-            rendered = "\n".join(element.value for element in app.markdown)
-            self.assertIn("GameScope", rendered)
-            self.assertIn("16,288", rendered)
-            self.assertIn("LinearRegression", rendered)
-            self.assertFalse(app.warning)
-            post_request.assert_not_called()
-            app.button[0].click().run(timeout=30)
-            self.assertFalse(app.exception)
-            self.assertTrue(app.form_submit_button)
+    def test_groq_explanation_uses_actual_context_and_safe_limits(self):
+        from ui.groq_explainer import explain_market_analysis
 
-    def test_prediction_page_submits_to_api_and_displays_result(self):
-        history = []
+        client = Mock()
+        client.chat.completions.create.return_value = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    message=SimpleNamespace(content="## Ringkasan\nData historis.")
+                )
+            ]
+        )
+        groq_factory = MagicMock()
+        groq_factory.return_value.__enter__.return_value = client
+        with patch(
+            "ui.groq_explainer.get_metadata", return_value=METADATA
+        ), patch(
+            "ui.groq_explainer.get_groq_settings",
+            return_value=GroqSettings("test-groq-key", "test-model"),
+        ), patch("ui.groq_explainer.Groq", groq_factory):
+            explanation = explain_market_analysis("genre_analysis")
 
-        def post(url, json, timeout):
-            history.append(
-                {
-                    "game_title": json["game_title"],
-                    "platform": json["platform"],
-                    "genre": json["genre"],
-                    "publisher": json["publisher"],
-                    "release_year": json["release_year"],
-                    "predicted_global_sales": 2.25,
-                    "created_at": "2025-01-01T10:00:00+00:00",
-                }
-            )
-            return _response(
-                {
-                    **history[-1],
-                    "id": 1,
-                    "category": "Standard",
-                }
-            )
+        self.assertEqual(explanation, "## Ringkasan\nData historis.")
+        call = client.chat.completions.create.call_args.kwargs
+        self.assertEqual(call["model"], "test-model")
+        self.assertEqual(call["max_completion_tokens"], 450)
+        self.assertIn("RPG", call["messages"][1]["content"])
 
-        with patch("requests.get", side_effect=self._get(history)), patch(
-            "requests.post", side_effect=post
-        ) as post_request:
+    def test_home_displays_actual_local_summary_and_illustration(self):
+        app = AppTest.from_file(str(ROOT / "app.py")).run(timeout=30)
+        self.assertFalse(app.exception)
+        rendered = "\n".join(element.value for element in app.markdown)
+        self.assertIn("GameScope", rendered)
+        self.assertIn("16,288", rendered)
+        self.assertIn("LinearRegression", rendered)
+        self.assertFalse(app.warning)
+        app.button[0].click().run(timeout=30)
+        self.assertFalse(app.exception)
+        self.assertTrue(app.form_submit_button)
+
+    def test_prediction_page_submits_and_displays_result_without_backend(self):
+        with _mock_app_services() as services:
             app = AppTest.from_file(str(ROOT / "app.py")).run(timeout=30)
             app.switch_page("pages/prediction.py").run(timeout=30)
             self.assertFalse(app.exception)
@@ -155,23 +378,17 @@ class StreamlitAppTests(unittest.TestCase):
             app.text_input[0].set_value("Test game")
             app.form_submit_button[0].click().run(timeout=30)
             self.assertFalse(app.exception)
-            self.assertEqual(post_request.call_count, 1)
-            self.assertEqual(post_request.call_args.kwargs["json"]["release_year"], 2016)
+            services["predict"].assert_called_once()
+            self.assertEqual(
+                services["predict"].call_args.args[0]["release_year"], 2016
+            )
             rendered = "\n".join(element.value for element in app.markdown)
             self.assertIn("2.250", rendered)
             self.assertIn("ESTIMASI PENJUALAN GLOBAL", rendered)
-            self.assertIn("juta unit terjual", rendered)
             self.assertIn("Standard", rendered)
 
-            app.switch_page("pages/history.py").run(timeout=30)
-            self.assertFalse(app.exception)
-            self.assertEqual(len(app.dataframe), 1)
-            self.assertIn("Test game", app.dataframe[0].value.to_string())
-
-    def test_market_charts_have_ai_controls_and_model_page_remains_educational(self):
-        with patch("requests.get", side_effect=self._get()), patch(
-            "requests.post"
-        ) as post_request:
+    def test_market_charts_and_architecture_remain_available(self):
+        with _mock_app_services():
             app = AppTest.from_file(str(ROOT / "app.py")).run(timeout=30)
             app.switch_page("pages/analysis.py").run(timeout=30)
             self.assertFalse(app.exception)
@@ -183,7 +400,6 @@ class StreamlitAppTests(unittest.TestCase):
                     "Jelaskan Grafik Platform dengan AI",
                 ],
             )
-            post_request.assert_not_called()
 
             app.switch_page("pages/model.py").run(timeout=30)
             self.assertFalse(app.exception)
@@ -191,22 +407,13 @@ class StreamlitAppTests(unittest.TestCase):
             self.assertIn("0.093", rendered)
             self.assertIn("1.893", rendered)
             self.assertIn("OneHotEncoder", rendered)
-            self.assertIn("Platform · Genre · Publisher", rendered)
-            self.assertIn("Django REST API", rendered)
-            self.assertIn("Simpan prediksi · baca riwayat", rendered)
+            self.assertIn("Supabase · Groq", rendered)
+            self.assertIn("PostgREST · penjelasan AI", rendered)
             self.assertIn("Global Sales", rendered)
-            diagrams = [
-                element.value
-                for element in app.markdown
-                if "workflow-diagram" in element.value or "system-diagram" in element.value
-            ]
-            self.assertEqual(len(diagrams), 2)
-            self.assertFalse(app.button)
+            self.assertNotIn("Django REST API", rendered)
 
-    def test_model_diagrams_and_buttons_render_when_metadata_fails(self):
-        with patch("requests.get", side_effect=self._get(fail=True)), patch(
-            "requests.post"
-        ) as post_request:
+    def test_model_diagrams_render_when_local_metadata_is_unavailable(self):
+        with _mock_app_services(metadata_error=ApiError("artifacts tidak tersedia")):
             app = AppTest.from_file(str(ROOT / "app.py")).run(timeout=30)
             app.switch_page("pages/model.py").run(timeout=30)
             self.assertFalse(app.exception)
@@ -216,54 +423,40 @@ class StreamlitAppTests(unittest.TestCase):
             self.assertIn("workflow-diagram", rendered)
             self.assertIn("system-diagram", rendered)
             self.assertFalse(app.button)
-            post_request.assert_not_called()
 
-    def test_analysis_explanations_are_isolated_click_only_and_regeneratable(self):
+    def test_analysis_explanations_are_click_only_and_regeneratable(self):
         explanations = {
-            "genre_analysis": "## Genre\nAction memiliki rata-rata tertinggi.",
-            "platform_analysis": "## Platform\nPS2 memiliki rata-rata tertinggi.",
+            "genre_analysis": "## Genre\nAction merupakan agregat historis.",
+            "platform_analysis": "## Platform\nPS2 merupakan agregat historis.",
         }
-
-        def post(url, json, timeout):
-            return _response(
-                {
-                    "diagram_type": json["diagram_type"],
-                    "explanation": explanations[json["diagram_type"]],
-                }
+        with _mock_app_services() as services:
+            services["explanation"].side_effect = (
+                lambda analysis_type: explanations[analysis_type]
             )
-
-        with patch("requests.get", side_effect=self._get()), patch(
-            "requests.post", side_effect=post
-        ) as post_request:
             app = AppTest.from_file(str(ROOT / "app.py")).run(timeout=30)
             app.switch_page("pages/analysis.py").run(timeout=30)
             self.assertFalse(app.exception)
             self.assertEqual(_rendered_chart_count(app._tree.main), 2)
             self.assertEqual(len(app.button), 2)
-            post_request.assert_not_called()
+            services["explanation"].assert_not_called()
 
             app.button[0].click().run(timeout=30)
             self.assertFalse(app.exception)
-            self.assertEqual(post_request.call_count, 1)
             self.assertEqual(
-                post_request.call_args.kwargs["json"],
-                {"diagram_type": "genre_analysis"},
+                services["explanation"].call_args_list[-1].args[0],
+                "genre_analysis",
             )
             self.assertEqual(
                 app.session_state["genre_analysis_explanation"],
                 explanations["genre_analysis"],
             )
-            self.assertNotIn(
-                "platform_analysis_explanation",
-                app.session_state,
-            )
+            self.assertNotIn("platform_analysis_explanation", app.session_state)
 
             app.button[1].click().run(timeout=30)
             self.assertFalse(app.exception)
-            self.assertEqual(post_request.call_count, 2)
             self.assertEqual(
-                post_request.call_args.kwargs["json"],
-                {"diagram_type": "platform_analysis"},
+                services["explanation"].call_args_list[-1].args[0],
+                "platform_analysis",
             )
             self.assertEqual(
                 app.session_state["platform_analysis_explanation"],
@@ -272,55 +465,17 @@ class StreamlitAppTests(unittest.TestCase):
 
             app.button[0].click().run(timeout=30)
             self.assertFalse(app.exception)
-            self.assertEqual(post_request.call_count, 3)
-            self.assertEqual(
-                app.session_state["genre_analysis_explanation"],
-                explanations["genre_analysis"],
-            )
+            self.assertEqual(services["explanation"].call_count, 3)
 
-    def test_analysis_backend_failure_keeps_charts_and_shows_friendly_error(self):
-        missing_key_message = (
-            "Fitur penjelasan AI belum dikonfigurasi pada backend."
-        )
-
-        with patch("requests.get", side_effect=self._get()), patch(
-            "requests.post",
-            return_value=_response({"error": missing_key_message}, status=503),
-        ) as post_request:
+    def test_analysis_service_error_keeps_charts_and_shows_safe_message(self):
+        message = "Tambahkan GROQ_API_KEY ke Streamlit Secrets."
+        with _mock_app_services(explanation_error=ApiError(message)):
             app = AppTest.from_file(str(ROOT / "app.py")).run(timeout=30)
             app.switch_page("pages/analysis.py").run(timeout=30)
-            self.assertEqual(_rendered_chart_count(app._tree.main), 2)
-            self.assertEqual(len(app.button), 2)
             app.button[0].click().run(timeout=30)
             self.assertFalse(app.exception)
-            self.assertIn(missing_key_message, [error.value for error in app.error])
+            self.assertIn(message, [error.value for error in app.error])
             self.assertEqual(_rendered_chart_count(app._tree.main), 2)
-            self.assertEqual(len(app.button), 2)
-            app.button[1].click().run(timeout=30)
-            self.assertFalse(app.exception)
-            self.assertEqual(post_request.call_count, 2)
-            self.assertEqual(
-                [call.kwargs["json"] for call in post_request.call_args_list],
-                [
-                    {"diagram_type": "genre_analysis"},
-                    {"diagram_type": "platform_analysis"},
-                ],
-            )
-            self.assertEqual(len(app.button), 2)
-
-    def test_market_analysis_timeout_shows_friendly_error(self):
-        with patch("requests.get", side_effect=self._get()), patch(
-            "requests.post", side_effect=requests.Timeout("private detail")
-        ) as post_request:
-            app = AppTest.from_file(str(ROOT / "app.py")).run(timeout=30)
-            app.switch_page("pages/analysis.py").run(timeout=30)
-            post_request.assert_not_called()
-            app.button[0].click().run(timeout=30)
-            self.assertFalse(app.exception)
-            self.assertEqual(_rendered_chart_count(app._tree.main), 2)
-            self.assertTrue(app.error)
-            self.assertIn("memerlukan waktu lebih lama", app.error[0].value)
-            self.assertNotIn("private detail", app.error[0].value)
 
     def test_explicit_light_theme_and_responsive_diagram_assets(self):
         config = ROOT.parent / ".streamlit" / "config.toml"
@@ -328,18 +483,20 @@ class StreamlitAppTests(unittest.TestCase):
         self.assertIn('base = "light"', theme)
         self.assertIn('backgroundColor = "#F6F7F0"', theme)
         self.assertIn('primaryColor = "#456B4D"', theme)
-        self.assertIn('chartCategoricalColors = ["#456B4D", "#96AA83", "#C4D2B4"]', theme)
+        self.assertIn(
+            'chartCategoricalColors = ["#456B4D", "#96AA83", "#C4D2B4"]',
+            theme,
+        )
 
-        with patch("requests.get", side_effect=self._get()), patch(
-            "requests.post"
-        ):
+        with _mock_app_services():
             app = AppTest.from_file(str(ROOT / "app.py")).run(timeout=30)
             app.switch_page("pages/model.py").run(timeout=30)
             self.assertFalse(app.exception)
             diagrams = [
                 element.value
                 for element in app.markdown
-                if "workflow-diagram" in element.value or "system-diagram" in element.value
+                if "workflow-diagram" in element.value
+                or "system-diagram" in element.value
             ]
             self.assertEqual(len(diagrams), 2)
             self.assertTrue(all('role="img"' in diagram for diagram in diagrams))
@@ -350,7 +507,8 @@ class StreamlitAppTests(unittest.TestCase):
             diagrams = [
                 element.value
                 for element in app.markdown
-                if "workflow-diagram" in element.value or "system-diagram" in element.value
+                if "workflow-diagram" in element.value
+                or "system-diagram" in element.value
             ]
             self.assertEqual(len(diagrams), 2)
             self.assertTrue(all("is-animated" not in diagram for diagram in diagrams))
@@ -369,9 +527,7 @@ class StreamlitAppTests(unittest.TestCase):
         self.assertIn("background: var(--content-sage)", styles)
         self.assertIn("@media (max-width: 760px)", styles)
 
-        with patch("requests.get", side_effect=self._get()), patch(
-            "requests.post"
-        ):
+        with _mock_app_services():
             app = AppTest.from_file(str(ROOT / "app.py")).run(timeout=30)
             self.assertFalse(app.exception)
             rendered = "\n".join(element.value for element in app.markdown)
@@ -405,9 +561,7 @@ class StreamlitAppTests(unittest.TestCase):
         )
 
     def test_guide_and_empty_history_render_without_fake_records(self):
-        with patch("requests.get", side_effect=self._get()), patch(
-            "requests.post"
-        ):
+        with _mock_app_services(history=[]):
             app = AppTest.from_file(str(ROOT / "app.py")).run(timeout=30)
             app.switch_page("pages/guide.py").run(timeout=30)
             self.assertFalse(app.exception)
@@ -420,10 +574,8 @@ class StreamlitAppTests(unittest.TestCase):
             self.assertIn("BELUM ADA CATATAN", rendered)
             self.assertFalse(app.dataframe)
 
-    def test_sales_units_are_consistent_across_all_pages(self):
-        with patch("requests.get", side_effect=self._get()), patch(
-            "requests.post"
-        ):
+    def test_sales_units_remain_consistent_across_all_pages(self):
+        with _mock_app_services():
             app = AppTest.from_file(str(ROOT / "app.py")).run(timeout=30)
             self.assertFalse(app.exception)
             pages = (
@@ -441,32 +593,50 @@ class StreamlitAppTests(unittest.TestCase):
                     self.assertNotIn("juta kopi", rendered.lower())
                     self.assertNotIn("copies", rendered.lower())
 
-    def test_backend_unavailable_shows_friendly_page_message(self):
-        with patch("requests.get", side_effect=self._get(fail=True)), patch(
-            "requests.post"
-        ) as post_request:
+    def test_history_page_reads_supabase_rows(self):
+        history = [
+            {
+                "id": 7,
+                "created_at": "2025-01-01T10:00:00+00:00",
+                "game_title": "Test game",
+                "platform": "PS2",
+                "genre": "Action",
+                "publisher": "Nintendo",
+                "release_year": 2016,
+                "predicted_global_sales": 2.25,
+            }
+        ]
+        with _mock_app_services(history=history):
+            app = AppTest.from_file(str(ROOT / "app.py")).run(timeout=30)
+            app.switch_page("pages/history.py").run(timeout=30)
+            self.assertFalse(app.exception)
+            self.assertEqual(len(app.dataframe), 1)
+            self.assertIn("Test game", app.dataframe[0].value.to_string())
+
+    def test_history_page_reports_missing_supabase_configuration(self):
+        message = "Tambahkan SUPABASE_URL ke Streamlit Secrets."
+        with patch("ui.app_config._get_secret", return_value=""):
+            app = AppTest.from_file(str(ROOT / "app.py")).run(timeout=30)
+            app.switch_page("pages/history.py").run(timeout=30)
+        self.assertFalse(app.exception)
+        rendered = "\n".join(element.value for element in app.markdown)
+        self.assertIn(message, rendered)
+
+    def test_configuration_error_is_shown_instead_of_local_backend_hint(self):
+        message = "Tambahkan SUPABASE_URL ke Streamlit Secrets."
+        with _mock_app_services(metadata_error=ApiError("artifact tidak tersedia")):
             app = AppTest.from_file(str(ROOT / "app.py")).run(timeout=30)
             self.assertFalse(app.exception)
             self.assertTrue(app.warning)
-            self.assertNotIn("internal detail", app.warning[0].value)
+            self.assertIn("Ringkasan dataset/model", app.warning[0].value)
+            self.assertNotIn("aplikasi lokal sudah siap", app.warning[0].value)
 
-            app.switch_page("pages/prediction.py").run(timeout=30)
-            self.assertFalse(app.exception)
-            rendered = "\n".join(element.value for element in app.markdown)
-            self.assertIn("Pilihan formulir", rendered)
-            post_request.assert_not_called()
-
-    def test_prediction_connection_failure_shows_friendly_error(self):
-        with patch("requests.get", side_effect=self._get()), patch(
-            "requests.post", side_effect=requests.ConnectionError("internal detail")
-        ):
+        with _mock_app_services(predict_error=ApiError(message)):
             app = AppTest.from_file(str(ROOT / "app.py")).run(timeout=30)
             app.switch_page("pages/prediction.py").run(timeout=30)
             app.form_submit_button[0].click().run(timeout=30)
             self.assertFalse(app.exception)
-            self.assertTrue(app.error)
-            self.assertIn("belum dapat diproses", app.error[0].value)
-            self.assertNotIn("internal detail", app.error[0].value)
+            self.assertIn(message, [error.value for error in app.error])
 
 
 if __name__ == "__main__":

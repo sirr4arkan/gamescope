@@ -27,8 +27,11 @@ st.markdown('<div class="header-rule"></div>', unsafe_allow_html=True)
 
 try:
     metadata = get_metadata()
-except ApiError:
+except ApiError as error:
     metadata = None
+    metadata_error = str(error)
+else:
+    metadata_error = ""
 
 with st.container(key="home_hero"):
     hero_copy, hero_art = st.columns([1.15, 0.85], vertical_alignment="center")
@@ -53,8 +56,7 @@ with st.container(key="home_hero"):
 
 if metadata is None:
     st.warning(
-        "Ringkasan data belum dapat dimuat. Pastikan aplikasi lokal sudah siap, "
-        "lalu kunjungi halaman ini kembali."
+        "Ringkasan dataset/model belum dapat dimuat: " + metadata_error
     )
 else:
     dataset = metadata["dataset_summary"]

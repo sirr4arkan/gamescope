@@ -23,14 +23,14 @@ render_brand_header()
 render_page_heading(
     "RIWAYAT",
     "Jejak skenario yang tersimpan.",
-    "Riwayat diambil dari penyimpanan lokal sistem. Data tetap tersedia saat "
-    "aplikasi dijalankan kembali.",
+    "Riwayat diambil melalui Supabase Data API. Catatan tersimpan tetap tersedia "
+    "setelah aplikasi dijalankan kembali.",
 )
 
 try:
     history = get_history()
-except ApiError:
-    render_error_card("Riwayat prediksi belum dapat dimuat.")
+except ApiError as error:
+    render_error_card(f"Riwayat prediksi belum dapat dimuat: {error}")
     render_footer()
     st.stop()
 

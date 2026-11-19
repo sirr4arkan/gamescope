@@ -20,10 +20,8 @@ render_page_heading(
 
 try:
     metadata = get_metadata()
-except ApiError:
-    render_error_card(
-        "Pilihan formulir belum dapat dimuat dari aplikasi lokal."
-    )
+except ApiError as error:
+    render_error_card(f"Pilihan formulir belum dapat dimuat: {error}")
     render_footer()
     st.stop()
 

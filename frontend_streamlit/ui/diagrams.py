@@ -81,7 +81,7 @@ def render_system_architecture(animate=False):
     st.markdown(
         f"""
         <div class="diagram-frame system-diagram{animation_class}" role="img"
-             aria-label="Arsitektur: Pengguna memakai Streamlit, Streamlit berkomunikasi dengan Django REST API, Django memakai Pipeline Joblib dan SQLite untuk riwayat">
+             aria-label="Arsitektur: Streamlit memuat model Machine Learning lokal, menggunakan Supabase PostgREST untuk riwayat, dan Groq melalui HTTPS untuk penjelasan AI">
           <div class="system-flow">
             <div class="diagram-node system-user">
               <span class="diagram-index">01</span>
@@ -101,30 +101,30 @@ def render_system_architecture(animate=False):
             </div>
             <div class="system-connector system-api-connector">
               <span class="system-connector-arrow">⇄</span>
-              <small>GET metadata<br>POST predict<br>GET history</small>
+              <small>metadata lokal<br>prediksi lokal<br>API via HTTPS</small>
             </div>
             <div class="diagram-node system-api">
               <span class="diagram-index">03</span>
-              <span class="diagram-kicker">SISI SERVER</span>
-              <strong>Django REST API</strong>
-              <small>Validasi, inferensi, dan riwayat</small>
+              <span class="diagram-kicker">LAYANAN APLIKASI</span>
+              <strong>Streamlit server</strong>
+              <small>Metadata · validasi · inferensi</small>
               <div class="database-link">
-                <span>↕ &nbsp; Django ORM</span>
+                <span>↕ &nbsp; HTTPS</span>
                 <div class="database-card">
-                  <strong>SQLite</strong>
-                  <small>Simpan prediksi · baca riwayat</small>
+                  <strong>Supabase · Groq</strong>
+                  <small>PostgREST · penjelasan AI</small>
                 </div>
               </div>
             </div>
             <div class="system-connector">
               <span class="system-connector-arrow">⇄</span>
-              <small>fitur<br>prediksi</small>
+              <small>fitur<br>rilis</small>
             </div>
             <div class="diagram-node system-model">
               <span class="diagram-index">04</span>
               <span class="diagram-kicker">INFERENSI</span>
               <strong>ML Pipeline</strong>
-              <small>Joblib · dimuat sekali per proses</small>
+              <small>Joblib · artifacts/ lokal</small>
             </div>
             <div class="system-connector">
               <span class="system-connector-arrow">→</span>
@@ -139,7 +139,7 @@ def render_system_architecture(animate=False):
           </div>
           <div class="diagram-caption">
             <span class="diagram-caption-dot"></span>
-            Prediksi, metadata, dan riwayat melewati Django API
+            Prediksi lokal · histori Supabase · penjelasan AI Groq
           </div>
         </div>
         """,

@@ -21,11 +21,16 @@ render_page_heading(
 
 try:
     metadata = get_metadata()
-except ApiError:
+except ApiError as error:
     metadata = None
+    metadata_error = str(error)
+else:
+    metadata_error = ""
 
 if metadata is None:
-    st.warning("Ringkasan model belum dapat dimuat. Diagram tetap tersedia.")
+    st.warning(
+        "Ringkasan model belum dapat dimuat. " + metadata_error + " Diagram tetap tersedia."
+    )
 else:
     summary = metadata["model_summary"]
     raw = summary["raw_metrics"]
@@ -60,8 +65,8 @@ render_ml_workflow(animate=animate_diagrams)
 render_section_heading(
     "ARSITEKTUR SISTEM",
     "Hubungan antarkomponen aplikasi.",
-    "Antarmuka berkomunikasi dengan Django untuk metadata, prediksi, dan riwayat; "
-    "sisi server memakai Pipeline tersimpan dan SQLite.",
+    "Streamlit memuat metadata dan model dari artifacts/, menghitung prediksi "
+    "secara lokal, lalu memakai Supabase dan Groq melalui HTTPS.",
 )
 render_system_architecture(animate=animate_diagrams)
 st.session_state["model_diagrams_animation_played"] = True

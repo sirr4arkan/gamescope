@@ -1,26 +1,22 @@
-# Video Game Global Sales Prediction
+# GameScope — Video Game Global Sales Prediction
 
-Aplikasi lokal untuk memperkirakan `Global_Sales` sebuah video game sebelum
-peluncuran, menggunakan informasi platform, genre, tahun, dan publisher.
-Prediksi dinyatakan dalam juta unit terjual dan merupakan estimasi pola historis, bukan
-jaminan penjualan aktual.
+Aplikasi Streamlit untuk memperkirakan `Global_Sales` sebuah video game
+menggunakan informasi platform, genre, tahun, dan publisher. Prediksi
+dinyatakan dalam juta unit terjual dan merupakan estimasi pola historis,
+bukan jaminan penjualan aktual.
 
 ## Tujuan dan alur
 
 `dataset/vgsales.csv` → pembersihan → preprocessing dan training Pipeline →
-evaluasi → model joblib → Django REST API → Supabase PostgreSQL → Streamlit.
+evaluasi → model joblib → inferensi lokal di Streamlit.
 
 Pipeline encoding berada bersama estimator di dalam satu artefak sehingga
-encoding training dan prediksi konsisten. Django memuat Pipeline saat pertama
-kali dipakai, menyimpannya dalam cache proses, memvalidasi payload, membatasi
-prediksi minimum nol, mengategorikan hasil, lalu menyimpan request ke PostgreSQL.
-Streamlit meminta pilihan formulir, grafik historis, prediksi, dan riwayat
-melalui Django API; Streamlit tidak terhubung langsung ke Supabase. Halaman
-Model AI menampilkan materi edukatif dan dua diagram
-statis. Penjelasan AI untuk grafik Genre dan Platform tersedia di halaman
-Analisis Pasar dan hanya dibuat setelah tombol terkait diklik; backend mengambil
-agregat aktual lalu meminta jawaban Markdown dari Groq. API key tidak pernah
-dikirim ke Streamlit.
+encoding training dan prediksi konsisten. Streamlit memuat model, dataset
+bersih, dan metadata dari `artifacts/`, melakukan validasi dan inferensi pada
+proses server Streamlit, lalu menyimpan/membaca histori melalui Supabase
+PostgREST HTTPS. Penjelasan grafik Genre dan Platform dibuat saat diminta
+menggunakan Groq HTTPS. Django tetap berada di repository, tetapi bukan
+ketergantungan runtime untuk Streamlit Community Cloud.
 
 ## Dataset dan variabel
 
@@ -101,12 +97,17 @@ frontend_streamlit/pages/
   guide.py
 frontend_streamlit/ui/
   api_client.py
+  app_config.py
   charts.py
   components.py
   diagrams.py
+  errors.py
+  groq_explainer.py
+  local_inference.py
+  supabase_rest.py
   styles.css
 frontend_streamlit/assets/hero-forest.svg
-.streamlit/config.toml
+frontend_streamlit/.streamlit/config.toml
 requirements.txt
 ```
 
@@ -118,15 +119,15 @@ rounded; section alternatif dan card putih memakai border sage lembut. Beranda
 menampilkan tiga fitur inti serta alur Karakteristik Rilis → Prediksi Machine
 Learning → Estimasi Penjualan, tanpa mengubah alur prediksi.
 Grafik pasar menggunakan agregat aktual dengan warna serta axis terang; halaman
-Model AI menampilkan alur ML dan diagram sistem yang sudah ada dan tidak
-diubah. Seluruh opsi form, agregat grafik, estimasi, dan riwayat tetap
-dimuat melalui backend Django.
+Model AI menampilkan alur ML dan arsitektur Streamlit, Supabase, dan Groq.
+Opsi form, agregat grafik, dan estimasi dihitung dari artifact lokal; riwayat
+dibaca dari tabel Supabase yang sama.
 
-Database aktif dikonfigurasi melalui `backend_django/.env` dan menggunakan
-Supabase PostgreSQL (`DB_ENGINE=postgresql`). Django ORM mengelola tabel
-`prediction_logs`; database SQLite lokal tetap dipertahankan sebagai sumber
-arsip dan tidak dihapus. Frontend hanya berkomunikasi dengan Django REST API.
-Koneksi PostgreSQL memakai psycopg dan TLS `DB_SSLMODE=require`.
+Database PostgreSQL Supabase yang sudah ada diakses melalui Data API
+(`https://<project-ref>.supabase.co/rest/v1/prediction_logs`), bukan koneksi
+PostgreSQL TCP dan bukan Supabase client di browser. Aplikasi menggunakan
+publishable/anon key dengan grant dan kebijakan RLS yang sesuai; service-role
+key tidak boleh dimasukkan ke Streamlit.
 
 ## Instalasi
 
@@ -154,175 +155,77 @@ artefak tersebut.
 
 ## Menjalankan aplikasi lokal
 
-### Konfigurasi database
-
-Salin `backend_django/.env.example` ke `backend_django/.env` bila belum ada,
-lalu isi `DB_USER`, `DB_PASSWORD`, dan `DB_HOST` dari pengaturan koneksi
-PostgreSQL Supabase. Jangan commit `.env` atau menaruh kredensial database di
-frontend. Konfigurasi Groq tetap berada di `.env` backend yang sama.
-
-Sebelum migrasi awal, buat salinan database SQLite lokal; file aslinya tetap
-dipertahankan:
+Jalankan Streamlit dari root repository:
 
 ```powershell
-New-Item -ItemType Directory -Force .\backend_django\backups | Out-Null
-Copy-Item .\backend_django\db.sqlite3 ('.\backend_django\backups\db.sqlite3-' + (Get-Date -Format yyyyMMdd-HHmmss) + '.bak')
+.\.venv\Scripts\python.exe -m streamlit run .\frontend_streamlit\app.py
 ```
 
-Terapkan migration Django, periksa koneksi dan operasi insert/select, lalu
-impor histori lama. Perintah impor aman dijalankan ulang:
+Metadata dan prediksi lokal dapat digunakan tanpa Django. Untuk histori dan
+penjelasan AI, sediakan konfigurasi melalui environment variables atau
+`frontend_streamlit/.streamlit/secrets.toml` (jangan commit file secrets):
 
-```powershell
-.\.venv\Scripts\python.exe .\backend_django\manage.py migrate
-.\.venv\Scripts\python.exe .\backend_django\manage.py check_database
-.\.venv\Scripts\python.exe .\backend_django\manage.py migrate_sqlite_history
+```toml
+SUPABASE_URL = "https://<project-ref>.supabase.co"
+SUPABASE_ANON_KEY = "<publishable-or-legacy-anon-key>"
+GROQ_API_KEY = "<groq-api-key>"
+GROQ_MODEL = "openai/gpt-oss-20b"
 ```
 
-1. Jalankan backend:
+`SUPABASE_ANON_KEY` juga dapat berupa publishable key baru yang disimpan
+dengan nama `SUPABASE_PUBLISHABLE_KEY`. Jangan gunakan `service_role` key.
+Riwayat membutuhkan akses `SELECT` ke `prediction_logs`; penyimpanan prediksi
+membutuhkan akses `INSERT` dan sequence yang dipakai kolom ID. Jika RLS aktif,
+berikan kebijakan minimum yang sesuai untuk role `anon`. Aplikasi menampilkan
+pesan konfigurasi/permission tanpa menampilkan credential atau body error
+Supabase.
 
-   ```powershell
-   .\.venv\Scripts\python.exe .\backend_django\manage.py runserver 127.0.0.1:8000 --insecure
-   ```
+Penjelasan grafik hanya dibuat setelah tombol Genre atau Platform diklik.
+Prompt dibatasi pada agregat dataset aktual, maksimal 450 completion tokens,
+dan jawaban maksimal 8.000 karakter. API key Groq dibaca server-side dari
+Streamlit Secrets dan tidak dikirim ke browser.
 
-   Karena konfigurasi lokal mempertahankan `DJANGO_DEBUG=false`,
-   `--insecure` diperlukan agar Django `runserver` menyajikan static files
-   melalui staticfiles finders. Gunakan opsi ini hanya untuk pengembangan lokal;
-   untuk deployment, jalankan `collectstatic` dan sajikan aset melalui web
-   server/CDN.
+### Django Admin opsional
 
-2. Pada terminal lain, jalankan frontend:
-
-   ```powershell
-   .\.venv\Scripts\python.exe -m streamlit run .\frontend_streamlit\app.py
-   ```
-
-   Buka URL lokal Streamlit yang ditampilkan. URL API default adalah
-   `http://127.0.0.1:8000/api`; dapat diganti melalui `DJANGO_API_URL`.
-
-### Django Admin
-
-Panel administrasi tersedia di `http://127.0.0.1:8000/admin/` dan memakai
-database Supabase PostgreSQL yang sama. Akses hanya diberikan kepada superuser
-atau staff dengan izin model yang sesuai; tidak ada pendaftaran administrator
-publik. Buat akun administrator secara interaktif jika belum ada:
-
-```powershell
-.\.venv\Scripts\python.exe .\backend_django\manage.py createsuperuser
-```
-
-Django meminta username, email, dan password di terminal, lalu menyimpan
-password menggunakan hashing bawaan. Selama pemeriksaan integrasi tidak ada
-superuser yang terdaftar, jadi jalankan perintah tersebut sebelum login.
-Histori prediksi dikelola di kategori **Prediction Management**; akun dan grup
-berada di **Authentication & Authorization**. Record dapat dihapus satu per
-satu atau secara massal melalui action admin, selalu dengan halaman konfirmasi
-dan hanya bagi akun yang memiliki izin delete.
-
-### Endpoint
-
-| Method | Path | Keterangan |
-|---|---|---|
-| POST | `/api/predict/` | Prediksi dan simpan riwayat |
-| GET | `/api/history/` | Maksimal 20 riwayat terbaru |
-| GET | `/api/metadata/` | Pilihan form, tahun, dan agregat grafik |
-| POST | `/api/explain/` | Penjelasan AI untuk analisis grafik yang diizinkan |
-
-Payload prediksi menerima `platform`, `genre`, `release_year`, `publisher`,
-serta `game_title` opsional. Kesalahan validasi dikembalikan sebagai JSON
-dengan status 400; artefak metadata/model yang tidak tersedia menghasilkan
-status 503.
-
-### Penjelasan grafik pasar dengan AI
-
-Isi `GROQ_API_KEY` di `backend_django/.env` dengan key milik backend dan, bila
-perlu, pilih `GROQ_MODEL`. Django memuat berkas tersebut pada proses backend
-saja. Model default `openai/gpt-oss-20b`;
-provider dan model dapat berubah ketersediaannya, sehingga periksa daftar model
-produksi Groq jika permintaan gagal. Jangan menaruh key di frontend, commit
-berkas `.env`, atau mengirimkannya melalui request browser.
-
-Di halaman **Analisis Pasar**, gunakan tombol penjelasan di bawah grafik Genre
-atau Platform. Jawaban masing-masing grafik disimpan terpisah selama sesi dan
-tombol yang sama dapat digunakan untuk menghasilkan ulang. Endpoint hanya
-menerima `diagram_type` bernilai `genre_analysis` atau `platform_analysis`;
-prompt ditentukan server. Backend mengambil rata-rata Global Sales, jumlah
-observasi per kategori, total baris, dan rentang tahun dari dataset bersih yang
-sama dengan agregat grafik. Tanpa key, grafik tetap tampil dan aplikasi
-menampilkan pesan bahwa fitur AI belum dikonfigurasi.
+Kode Django dan panel `/admin/` tetap ada di repository, tetapi tidak diperlukan
+untuk menjalankan atau men-deploy frontend Streamlit. Bila Django dijalankan
+terpisah untuk administrasi lokal, ikuti konfigurasi backend yang ada dan
+gunakan `python backend_django/manage.py createsuperuser` untuk membuat akun
+administrator secara interaktif. Streamlit tidak menggunakan `DJANGO_API_URL`.
 
 ## Deployment
 
-### Django backend di Render
-
-Buat **Web Service** dari repository dengan root directory repository. Gunakan:
-
-- Build command: `bash build.sh`
-- Start command:
-  `gunicorn --chdir backend_django config.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 90`
-- Health check path: `/api/metadata/`
-
-`build.sh` memasang dependency, menjalankan `collectstatic`, lalu menerapkan
-migration. Deploy akan gagal jika konfigurasi database atau koneksi Supabase
-belum siap. Isi environment variables di Render Dashboard, jangan simpan nilainya
-di repository:
-
-| Variable | Nilai |
-|---|---|
-| `DJANGO_SECRET_KEY` | Secret acak yang dibuat khusus untuk deployment |
-| `DJANGO_DEBUG` | `false` |
-| `DJANGO_ALLOWED_HOSTS` | Host service Render, misalnya `<service>.onrender.com`; hostname Render juga ditambahkan otomatis |
-| `DJANGO_CSRF_TRUSTED_ORIGINS` | `https://<service>.onrender.com` |
-| `DJANGO_SECURE_SSL_REDIRECT` | `true` |
-| `DB_ENGINE` | `postgresql` |
-| `DB_NAME` | `postgres` |
-| `DB_USER` | User koneksi Supabase |
-| `DB_PASSWORD` | Password koneksi Supabase |
-| `DB_HOST` | Host koneksi Supabase |
-| `DB_PORT` | `5432` |
-| `DB_SSLMODE` | `require` |
-| `GROQ_API_KEY` | Secret Groq backend, jika fitur penjelasan AI digunakan |
-| `GROQ_MODEL` | Model Groq yang ingin digunakan |
-
-Render menyediakan `PORT`; jangan hardcode port. Konfigurasi model, dataset
-bersih, dan metadata tetap memakai `artifacts/model_vgsales.joblib`,
-`artifacts/cleaned_vgsales.csv`, dan `artifacts/model_metadata.json` di root
-repository. WhiteNoise menyajikan aset Admin dari `STATIC_ROOT`.
-
-Setelah deploy, buat akun admin dari Render Shell dengan
-`python backend_django/manage.py createsuperuser`.
-
 ### Streamlit Community Cloud
 
-Deploy `frontend_streamlit/app.py`. Pada Advanced settings → Secrets, atur:
+Hubungkan repository ke Streamlit Community Cloud dan tetapkan entry point
+`frontend_streamlit/app.py`. Pada **Advanced settings → Secrets**, masukkan:
 
 ```toml
-DJANGO_API_URL = "https://<service>.onrender.com/api"
+SUPABASE_URL = "https://<project-ref>.supabase.co"
+SUPABASE_ANON_KEY = "<publishable-or-legacy-anon-key>"
+GROQ_API_KEY = "<groq-api-key>"
+GROQ_MODEL = "openai/gpt-oss-20b"
 ```
 
-API client memakai environment variable `DJANGO_API_URL` jika tersedia, lalu
-fallback ke Streamlit Secrets. Frontend hanya memerlukan URL API; jangan
-memasukkan kredensial Supabase atau Groq ke Streamlit.
+Pastikan folder root `artifacts/` dan dependency `requirements.txt` ikut
+ter-deploy. Django hosting, `DJANGO_API_URL`, migrasi database, dan impor
+histori tidak diperlukan. Aplikasi memakai Supabase Data API melalui HTTPS;
+jika respons menolak akses, periksa Data API exposure, grant, dan kebijakan
+RLS untuk role `anon` (SELECT dan INSERT). Jangan menaruh `service_role` key
+di secrets aplikasi.
 
 ## Pengujian
 
 Setelah training, jalankan:
 
 ```powershell
-.\.venv\Scripts\python.exe .\backend_django\manage.py test predictor
-.\.venv\Scripts\python.exe .\frontend_streamlit\test_app.py
+.\.venv\Scripts\python.exe -m unittest discover -s .\frontend_streamlit -p test_app.py
 ```
 
-Tes mencakup endpoint metadata, prediksi dengan pencatatan database,
-penanganan input invalid/model/database, history kosong dan batas 20 item,
-pembersihan data, pemuatan Pipeline joblib sekali, serta prediksi kategori
-yang belum pernah dilihat. Training aktual juga menguji ekspor ulang
-`LinearRegression` dan pencatatan metrik sebelum/sesudah clipping. Pemeriksaan
-Integrasi Streamlit dilakukan dengan tes AppTest pada halaman multipage,
-termasuk render grafik, hasil/riwayat, penjelasan grafik hanya setelah tombol
-ditekan, isolasi jawaban genre/platform, generate ulang, serta penanganan
-backend/provider yang tidak tersedia.
-Pengujian backend untuk fitur Groq menggunakan mock; permintaan live hanya
-tersedia setelah `GROQ_API_KEY` disiapkan.
+Tes menggunakan artifact model lokal yang tersedia, mem-mock seluruh request
+Supabase dan Groq, serta memeriksa validasi konfigurasi, prediksi, error
+permission, UI multipage, dan penjelasan AI. Tes tidak menghubungi atau menulis
+ke database Supabase produksi.
 
 ## Pembagian tugas
 
