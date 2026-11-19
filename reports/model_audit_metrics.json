@@ -1,0 +1,298 @@
+{
+  "cleaning": {
+    "rows_before_cleaning": 16324,
+    "identical_duplicates_removed": 0,
+    "rows_after_duplicate_removal": 16324,
+    "missing_required_values_removed": 36,
+    "rows_after_missing_value_removal": 16288,
+    "invalid_numeric_values_removed": 0,
+    "rows_after_numeric_validation": 16288,
+    "invalid_or_negative_target_rows_removed": 0,
+    "rows_after_cleaning": 16288
+  },
+  "raw_rows": 16324,
+  "clean_rows": 16288,
+  "nulls_raw": {
+    "Rank": 0,
+    "Name": 0,
+    "Platform": 0,
+    "Year": 0,
+    "Genre": 0,
+    "Publisher": 36,
+    "NA_Sales": 0,
+    "EU_Sales": 0,
+    "JP_Sales": 0,
+    "Other_Sales": 0,
+    "Global_Sales": 0
+  },
+  "exact_duplicates": 0,
+  "target": {
+    "mean": 0.5410068762278979,
+    "std": 1.5674726933876277,
+    "median": 0.17,
+    "skew": 17.30307569335336,
+    "quantiles": {
+      "0.0": 0.01,
+      "0.01": 0.01,
+      "0.25": 0.06,
+      "0.5": 0.17,
+      "0.75": 0.48,
+      "0.9": 1.22,
+      "0.95": 2.05,
+      "0.99": 5.472599999999984,
+      "0.995": 8.290850000000045,
+      "1.0": 82.74
+    },
+    "iqr_upper_fence": 1.1099999999999999,
+    "count_above_iqr_upper_fence": 1826,
+    "share_zero": 0.0,
+    "share_below_1": 0.8736493123772102,
+    "share_at_least_5": 0.012647347740667976
+  },
+  "feature_distributions": {
+    "Platform": {
+      "unique": 31,
+      "top_15": {
+        "DS": 2131,
+        "PS2": 2127,
+        "PS3": 1304,
+        "Wii": 1290,
+        "X360": 1234,
+        "PSP": 1197,
+        "PS": 1189,
+        "PC": 938,
+        "XB": 803,
+        "GBA": 786,
+        "GC": 542,
+        "3DS": 499,
+        "PSV": 408,
+        "PS4": 335,
+        "N64": 316
+      },
+      "singletons": 2
+    },
+    "Genre": {
+      "unique": 12,
+      "top_15": {
+        "Action": 3250,
+        "Sports": 2304,
+        "Misc": 1686,
+        "Role-Playing": 1468,
+        "Shooter": 1282,
+        "Adventure": 1274,
+        "Racing": 1225,
+        "Platform": 875,
+        "Simulation": 848,
+        "Fighting": 836,
+        "Strategy": 670,
+        "Puzzle": 570
+      },
+      "singletons": 0
+    },
+    "Publisher": {
+      "unique": 576,
+      "top_15": {
+        "Electronic Arts": 1339,
+        "Activision": 966,
+        "Namco Bandai Games": 928,
+        "Ubisoft": 918,
+        "Konami Digital Entertainment": 823,
+        "THQ": 712,
+        "Nintendo": 696,
+        "Sony Computer Entertainment": 682,
+        "Sega": 630,
+        "Take-Two Interactive": 412,
+        "Capcom": 376,
+        "Atari": 347,
+        "Tecmo Koei": 338,
+        "Square Enix": 231,
+        "Warner Bros. Interactive Entertainment": 217
+      },
+      "singletons": 192
+    },
+    "Year": {
+      "unique": 37,
+      "top_15": {
+        "2009": 1433,
+        "2008": 1428,
+        "2010": 1257,
+        "2007": 1201,
+        "2011": 1136,
+        "2006": 1008,
+        "2005": 936,
+        "2002": 828,
+        "2003": 775,
+        "2004": 744,
+        "2012": 655,
+        "2015": 614,
+        "2014": 580,
+        "2013": 546,
+        "2001": 482
+      },
+      "singletons": 0
+    }
+  },
+  "random_split": {
+    "test_rows": 3258,
+    "models": {
+      "LinearRegression": {
+        "r2": 0.09331303895320853,
+        "rmse": 1.8928965838920984,
+        "mae": 0.5596617360035075
+      },
+      "RandomForestRegressor": {
+        "r2": -0.023645353909057976,
+        "rmse": 2.01128197799988,
+        "mae": 0.5319782631462909
+      },
+      "DummyRegressor_mean": {
+        "r2": -0.0003588600959738564,
+        "rmse": 1.9882734525214425,
+        "mae": 0.6173372469538351
+      }
+    },
+    "selected_linear_residuals": {
+      "mean": 0.033068189438884,
+      "median": -0.1182988497051744,
+      "std": 1.8928982397831737,
+      "q01": -2.0456793069901678,
+      "q05": -0.9119534715377692,
+      "q95": 1.2123874217956374,
+      "q99": 4.964874943430569,
+      "prediction_mean": 0.5380644072461989,
+      "prediction_min": -0.6474680383518319,
+      "prediction_max": 3.8602357944597827,
+      "negative_raw_prediction_count": 425,
+      "actual_mean": 0.5711325966850829,
+      "actual_median": 0.18,
+      "groups": {
+        "Niche": {
+          "definition": "<1",
+          "count": 2833,
+          "share": 0.8695518723143032,
+          "actual_mean": 0.2232792093187434,
+          "predicted_mean": 0.4512345735313078,
+          "bias_pred_minus_actual": 0.22795536421256446,
+          "mae": 0.34589177884484984,
+          "rmse": 0.5057274195010841
+        },
+        "Standard": {
+          "definition": "1-<5",
+          "count": 382,
+          "share": 0.1172498465316145,
+          "actual_mean": 1.9340314136125654,
+          "predicted_mean": 1.0611327828332597,
+          "bias_pred_minus_actual": -0.8728986307793059,
+          "mae": 1.1083248570250877,
+          "rmse": 1.4194329252915923
+        },
+        "Blockbuster": {
+          "definition": ">=5",
+          "count": 43,
+          "share": 0.013198281154082258,
+          "actual_mean": 11.38139534883721,
+          "predicted_mean": 1.6119434639910593,
+          "bias_pred_minus_actual": -9.76945188484615,
+          "mae": 9.76945188484615,
+          "rmse": 15.386027212084729
+        }
+      }
+    }
+  },
+  "cross_validation_5fold": {
+    "LinearRegression": {
+      "r2": {
+        "mean": 0.1356465962306302,
+        "std": 0.029037935376704183
+      },
+      "rmse": {
+        "mean": 1.4443165300050542,
+        "std": 0.25740024361331465
+      },
+      "mae": {
+        "mean": 0.5366104255488231,
+        "std": 0.016607943282103393
+      }
+    },
+    "RandomForestRegressor": {
+      "r2": {
+        "mean": -0.07212783138477082,
+        "std": 0.19306358621295697
+      },
+      "rmse": {
+        "mean": 1.601242088263096,
+        "std": 0.28525224341171274
+      },
+      "mae": {
+        "mean": 0.5048448834339916,
+        "std": 0.01694865942182166
+      }
+    },
+    "DummyRegressor_mean": {
+      "r2": {
+        "mean": -0.00036519336591775973,
+        "std": 0.00037319495431852143
+      },
+      "rmse": {
+        "mean": 1.5512864390553989,
+        "std": 0.25147393682143215
+      },
+      "mae": {
+        "mean": 0.5954144201266153,
+        "std": 0.02000849967869486
+      }
+    }
+  },
+  "temporal_holdout": {
+    "train_rows": 13551,
+    "test_rows": 2737,
+    "train_year_max": 2011,
+    "test_year_min": 2012,
+    "test_year_max": 2016,
+    "models": {
+      "LinearRegression": {
+        "r2": 0.004474601011889789,
+        "rmse": 1.2549597427419066,
+        "mae": 0.5773430312053388
+      },
+      "RandomForestRegressor": {
+        "r2": 0.05452448131471477,
+        "rmse": 1.2230065027488535,
+        "mae": 0.49632161235320166
+      },
+      "DummyRegressor_mean": {
+        "r2": -0.0007184090274381383,
+        "rmse": 1.2582286406924927,
+        "mae": 0.6128089079140717
+      }
+    }
+  },
+  "saved_model_metadata": {
+    "estimator": "LinearRegression",
+    "features": [
+      "Platform",
+      "Genre",
+      "Year",
+      "Publisher"
+    ],
+    "metadata_selected_model": "LinearRegression",
+    "metadata_features": [
+      "Platform",
+      "Genre",
+      "Year",
+      "Publisher"
+    ],
+    "metric_differences_reproduced_minus_metadata": {
+      "LinearRegression": {
+        "r2": 0.0,
+        "rmse": 0.0,
+        "mae": 0.0
+      },
+      "RandomForestRegressor": {
+        "r2": 2.220446049250313e-16,
+        "rmse": -4.440892098500626e-16,
+        "mae": 0.0
+      }
+    }
+  }
+}

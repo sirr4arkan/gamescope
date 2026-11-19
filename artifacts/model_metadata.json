@@ -1,0 +1,102 @@
+{
+  "dataset": "dataset\\vgsales.csv",
+  "source_structure": {
+    "columns": [
+      "Rank",
+      "Name",
+      "Platform",
+      "Year",
+      "Genre",
+      "Publisher",
+      "NA_Sales",
+      "EU_Sales",
+      "JP_Sales",
+      "Other_Sales",
+      "Global_Sales"
+    ],
+    "dtypes": {
+      "Rank": "int64",
+      "Name": "object",
+      "Platform": "object",
+      "Year": "int64",
+      "Genre": "object",
+      "Publisher": "object",
+      "NA_Sales": "float64",
+      "EU_Sales": "float64",
+      "JP_Sales": "float64",
+      "Other_Sales": "float64",
+      "Global_Sales": "float64"
+    },
+    "missing_values": {
+      "Rank": 0,
+      "Name": 0,
+      "Platform": 0,
+      "Year": 0,
+      "Genre": 0,
+      "Publisher": 36,
+      "NA_Sales": 0,
+      "EU_Sales": 0,
+      "JP_Sales": 0,
+      "Other_Sales": 0,
+      "Global_Sales": 0
+    }
+  },
+  "target": "Global_Sales",
+  "features": [
+    "Platform",
+    "Genre",
+    "Year",
+    "Publisher"
+  ],
+  "categorical_features": [
+    "Platform",
+    "Genre",
+    "Publisher"
+  ],
+  "numeric_features": [
+    "Year"
+  ],
+  "cleaning": {
+    "rows_before_cleaning": 16324,
+    "identical_duplicates_removed": 0,
+    "rows_after_duplicate_removal": 16324,
+    "missing_required_values_removed": 36,
+    "rows_after_missing_value_removal": 16288,
+    "invalid_numeric_values_removed": 0,
+    "rows_after_numeric_validation": 16288,
+    "invalid_or_negative_target_rows_removed": 0,
+    "rows_after_cleaning": 16288
+  },
+  "train_test_split": {
+    "test_size": 0.2,
+    "random_state": 42
+  },
+  "training_rows": 13030,
+  "test_rows": 3258,
+  "evaluations": {
+    "LinearRegression": {
+      "r2": 0.09331303895320853,
+      "rmse": 1.8928965838920984,
+      "mae": 0.5596617360035075
+    },
+    "RandomForestRegressor": {
+      "r2": -0.023645353909057976,
+      "rmse": 2.01128197799988,
+      "mae": 0.5319782631462909
+    }
+  },
+  "evaluations_after_nonnegative_clipping": {
+    "LinearRegression": {
+      "r2": 0.09519777212497726,
+      "rmse": 1.8909281752443179,
+      "mae": 0.542939098787146
+    },
+    "RandomForestRegressor": {
+      "r2": -0.023645353909057976,
+      "rmse": 2.01128197799988,
+      "mae": 0.5319782631462909
+    }
+  },
+  "selected_model": "LinearRegression",
+  "model_artifact": "model_vgsales.joblib"
+}

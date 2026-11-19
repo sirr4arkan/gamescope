@@ -1,0 +1,24 @@
+# Python environments
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Django database
+backend_django/db.sqlite3
+backend_django/backups/
+backend_django/staticfiles/
+
+# Environment secrets
+.env
+.streamlit/secrets.toml
+
+# Local agent configuration
+.agents/
+.claude/
+
+# Database backups
+*.bak
+
+# Audit bundle (generated archive)
+vgsales_audit_bundle.zip

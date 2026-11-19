@@ -1,0 +1,322 @@
+:root,
+html[data-theme="dark"],
+html[data-theme="light"],
+html[data-theme="auto"] {
+  color-scheme: dark;
+  --primary: #28523a;
+  --primary-fg: #f3f7f2;
+  --secondary: #1b3929;
+  --accent: #b4c9a7;
+  --body-bg: #111a16;
+  --body-fg: #e4ece6;
+  --body-quiet-color: #a4b2a8;
+  --body-medium-color: #c2cec5;
+  --body-loud-color: #f2f6f2;
+  --header-bg: #14281d;
+  --header-color: #eff5ef;
+  --header-branding-color: #b4c9a7;
+  --header-link-color: #d7e5d7;
+  --breadcrumbs-bg: #1c3325;
+  --breadcrumbs-fg: #c9d8cb;
+  --breadcrumbs-link-fg: #e1ece1;
+  --link-fg: #a8c89f;
+  --link-hover-color: #d1e4c9;
+  --link-selected-fg: #edf5eb;
+  --hairline-color: #34463a;
+  --border-color: #3a4d40;
+  --darkened-bg: #1a2820;
+  --selected-bg: #254131;
+  --selected-row: #344b3b;
+  --button-fg: #f3f7f2;
+  --button-bg: #28523a;
+  --button-hover-bg: #356a49;
+  --default-button-bg: #28523a;
+  --default-button-hover-bg: #356a49;
+  --object-tools-fg: #f3f7f2;
+  --object-tools-bg: #28523a;
+  --object-tools-hover-bg: #356a49;
+  --close-button-bg: #28523a;
+  --close-button-hover-bg: #356a49;
+  --delete-button-bg: #7d3434;
+  --delete-button-hover-bg: #9a4141;
+  --message-success-bg: #1b3929;
+  --message-warning-bg: #514322;
+  --message-error-bg: #542b2b;
+  --error-fg: #f1a4a4;
+}
+
+body,
+#container,
+#content,
+#content-main,
+#content-related,
+.module,
+.inline-group,
+#changelist,
+#changelist-filter,
+.selector,
+.selector-chosen,
+.paginator,
+.submit-row,
+.login #content {
+  background-color: var(--body-bg);
+  color: var(--body-fg);
+}
+
+#header {
+  background: var(--header-bg);
+  color: var(--header-color);
+}
+
+#branding h1,
+#branding h1 a:link,
+#branding h1 a:visited,
+#user-tools,
+#user-tools a {
+  color: var(--header-color);
+}
+
+#breadcrumbs {
+  background: var(--breadcrumbs-bg);
+  color: var(--breadcrumbs-fg);
+}
+
+#breadcrumbs a,
+div.breadcrumbs a {
+  color: var(--breadcrumbs-link-fg);
+}
+
+#breadcrumbs a,
+a:link,
+a:visited {
+  color: var(--link-fg);
+}
+
+a:hover,
+#breadcrumbs a:hover {
+  color: var(--link-hover-color);
+}
+
+.module h2,
+.module caption,
+.inline-group h2,
+div.breadcrumbs {
+  background: var(--secondary);
+  color: var(--body-loud-color);
+}
+
+#nav-sidebar {
+  background-color: var(--header-bg);
+}
+
+#nav-sidebar .current-model {
+  background: #385a43;
+  color: var(--body-loud-color);
+}
+
+#nav-sidebar a:focus,
+#nav-sidebar a:hover {
+  background: var(--secondary);
+  color: var(--link-hover-color);
+}
+
+#changelist-filter {
+  background: var(--secondary);
+  color: var(--body-fg);
+}
+
+#changelist-filter h2 {
+  background: var(--primary);
+  color: var(--primary-fg);
+}
+
+#changelist-filter h3 {
+  color: var(--body-fg);
+}
+
+#changelist-filter .viewlink,
+#changelist-filter .hidelink {
+  padding-left: 0;
+  background-image: none;
+}
+
+#changelist-filter .viewlink::before,
+#changelist-filter .hidelink::before {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
+  vertical-align: -2px;
+  background-color: currentColor;
+  content: "";
+  -webkit-mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: contain;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
+}
+
+#changelist-filter .viewlink::before {
+  -webkit-mask-image: url("../img/icon-viewlink.svg");
+  mask-image: url("../img/icon-viewlink.svg");
+}
+
+#changelist-filter .hidelink::before {
+  -webkit-mask-image: url("../img/icon-hidelink.svg");
+  mask-image: url("../img/icon-hidelink.svg");
+}
+
+table thead th,
+tr:nth-child(odd),
+.row1,
+.form-row,
+.aligned .form-row,
+.selector-available h2,
+.selector-chosen h2 {
+  background: var(--darkened-bg);
+  color: var(--body-fg);
+}
+
+tr:nth-child(even),
+.row2 {
+  background: #15221b;
+  color: var(--body-fg);
+}
+
+tr.selected,
+.selected {
+  background: var(--selected-row);
+}
+
+#changelist tbody tr.selected,
+#changelist tbody tr:has(.action-select:checked) {
+  background-color: var(--selected-row);
+}
+
+input,
+textarea,
+select,
+.selector select,
+.vTextField,
+.vLargeTextField {
+  background: #17241c;
+  border-color: var(--border-color);
+  color: var(--body-fg);
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: #8eaa88;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--accent);
+  outline-color: var(--accent);
+}
+
+.button,
+input[type="submit"],
+input[type="button"],
+input[type="submit"].default,
+.submit-row input,
+.object-tools a:link,
+.object-tools a:visited,
+a.button {
+  background: var(--primary);
+  color: var(--primary-fg);
+}
+
+.button:hover,
+input[type="submit"]:hover,
+input[type="button"]:hover,
+.submit-row input:hover,
+.object-tools a:hover {
+  background: var(--button-hover-bg);
+  color: #fff;
+}
+
+#toolbar form input[type="submit"],
+#changelist .actions .button {
+  background: var(--primary);
+  color: var(--primary-fg);
+}
+
+#toolbar form input[type="submit"]:hover,
+#changelist .actions .button:hover {
+  background: var(--button-hover-bg);
+  color: #fff;
+}
+
+#changelist table thead th.sorted .sortoptions a {
+  filter: hue-rotate(-90deg) saturate(0.6);
+}
+
+.deletelink,
+a.deletelink,
+.deletelink-box a {
+  color: #f1a4a4;
+}
+
+.help,
+p.help,
+form .help,
+.quiet,
+.help-tooltip {
+  color: var(--body-quiet-color);
+}
+
+.messagelist li {
+  background: #1b3929;
+  color: var(--body-loud-color);
+}
+
+.messagelist li.error {
+  background: #542b2b;
+}
+
+.messagelist li.warning {
+  background: #514322;
+}
+
+@media (min-width: 768px) {
+  #changelist {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  #changelist .changelist-form-container {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  body.change-list #changelist-filter {
+    flex: 0 0 250px;
+    order: 1;
+    width: 250px;
+    margin: 0 0 0 24px;
+    box-sizing: border-box;
+  }
+}
+
+@media (max-width: 767px) {
+  #changelist {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #changelist .changelist-form-container {
+    width: 100%;
+  }
+
+  body.change-list #changelist-filter {
+    flex: 0 0 auto;
+    order: 1;
+    width: auto;
+    margin: 30px 0 0;
+  }
+}
