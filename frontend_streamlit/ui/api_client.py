@@ -2,9 +2,24 @@ import os
 
 import requests
 import streamlit as st
+from streamlit.errors import StreamlitSecretNotFoundError
 
 
-API_BASE_URL = os.getenv("DJANGO_API_URL", "http://127.0.0.1:8000/api").rstrip("/")
+DEFAULT_API_BASE_URL = "http://127.0.0.1:8000/api"
+
+
+def _get_api_base_url():
+    api_url = os.getenv("DJANGO_API_URL", "").strip()
+    if not api_url:
+        try:
+            secret_url = st.secrets.get("DJANGO_API_URL")
+        except StreamlitSecretNotFoundError:
+            secret_url = None
+        api_url = secret_url.strip() if isinstance(secret_url, str) else ""
+    return (api_url or DEFAULT_API_BASE_URL).rstrip("/")
+
+
+API_BASE_URL = _get_api_base_url()
 REQUEST_TIMEOUT = 10
 
 

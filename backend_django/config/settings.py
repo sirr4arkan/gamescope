@@ -8,14 +8,62 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 ROOT_DIR = BASE_DIR.parent
 load_dotenv(BASE_DIR / ".env")
+
+
+def _environment_bool(name, default=False):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ImproperlyConfigured(f"{name} must be a boolean value.")
+
+
+IS_RENDER = _environment_bool("RENDER", False) or bool(
+    os.getenv("RENDER_EXTERNAL_HOSTNAME", "").strip()
+)
 DB_ENGINE = os.getenv("DB_ENGINE", "sqlite").strip().lower()
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "local-development-only-change-me")
-DEBUG = os.getenv("DJANGO_DEBUG", "false").lower() == "true"
+DEBUG = _environment_bool("DJANGO_DEBUG", False)
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "").strip()
+if SECRET_KEY in {
+    "",
+    "local-development-only-change-me",
+    "replace-with-a-local-secret",
+    "replace-with-a-random-secret",
+}:
+    if DEBUG and not IS_RENDER:
+        SECRET_KEY = "local-development-only-change-me"
+    else:
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY must be set to a non-placeholder value."
+        )
+if IS_RENDER and DEBUG:
+    raise ImproperlyConfigured("DJANGO_DEBUG must be false on Render.")
+
 ALLOWED_HOSTS = [
     host.strip()
     for host in os.getenv("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost,testserver").split(",")
     if host.strip()
 ]
+RENDER_EXTERNAL_HOSTNAME = os.getenv("RENDER_EXTERNAL_HOSTNAME", "").strip()
+if RENDER_EXTERNAL_HOSTNAME and RENDER_EXTERNAL_HOSTNAME not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+if IS_RENDER and "*" in ALLOWED_HOSTS:
+    raise ImproperlyConfigured("Wildcard ALLOWED_HOSTS is not allowed on Render.")
+
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip().rstrip("/")
+    for origin in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
+    if origin.strip()
+]
+if RENDER_EXTERNAL_HOSTNAME:
+    render_origin = f"https://{RENDER_EXTERNAL_HOSTNAME}"
+    if render_origin not in CSRF_TRUSTED_ORIGINS:
+        CSRF_TRUSTED_ORIGINS.append(render_origin)
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.contenttypes",
@@ -27,6 +75,7 @@ INSTALLED_APPS = [
 ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -54,8 +103,41 @@ WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
+
+SECURE_PROXY_SSL_HEADER = (
+    ("HTTP_X_FORWARDED_PROTO", "https") if IS_RENDER else None
+)
+SECURE_SSL_REDIRECT = _environment_bool("DJANGO_SECURE_SSL_REDIRECT", IS_RENDER)
+SESSION_COOKIE_SECURE = IS_RENDER
+CSRF_COOKIE_SECURE = IS_RENDER
+try:
+    SECURE_HSTS_SECONDS = int(
+        os.getenv("DJANGO_SECURE_HSTS_SECONDS", "31536000" if IS_RENDER else "0")
+    )
+except ValueError as error:
+    raise ImproperlyConfigured(
+        "DJANGO_SECURE_HSTS_SECONDS must be an integer."
+    ) from error
+if SECURE_HSTS_SECONDS < 0:
+    raise ImproperlyConfigured("DJANGO_SECURE_HSTS_SECONDS cannot be negative.")
+SECURE_HSTS_INCLUDE_SUBDOMAINS = _environment_bool(
+    "DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS", False
+)
+SECURE_HSTS_PRELOAD = _environment_bool("DJANGO_SECURE_HSTS_PRELOAD", False)
+SECURE_CONTENT_TYPE_NOSNIFF = True
 
 SQLITE_PATH = Path(os.getenv("SQLITE_PATH", str(BASE_DIR / "db.sqlite3")))
+
+if IS_RENDER and DB_ENGINE != "postgresql":
+    raise ImproperlyConfigured("Render must use PostgreSQL via DB_ENGINE=postgresql.")
 
 if DB_ENGINE == "postgresql":
     required_database_variables = ("DB_NAME", "DB_USER", "DB_PASSWORD", "DB_HOST")

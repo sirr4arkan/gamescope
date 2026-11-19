@@ -1,3 +1,4 @@
+import os
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -7,6 +8,7 @@ import requests
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 
+from ui import api_client
 from ui.api_client import get_history
 
 
@@ -57,6 +59,30 @@ class StreamlitAppTests(unittest.TestCase):
 
     def tearDown(self):
         st.cache_data.clear()
+
+    def test_api_url_prefers_environment_over_streamlit_secret(self):
+        with patch.dict(
+            os.environ, {"DJANGO_API_URL": "https://render.example/api/"}
+        ), patch(
+            "ui.api_client.st",
+            SimpleNamespace(
+                secrets={"DJANGO_API_URL": "https://streamlit.example/api"}
+            ),
+        ):
+            self.assertEqual(
+                api_client._get_api_base_url(), "https://render.example/api"
+            )
+
+    def test_api_url_uses_streamlit_cloud_secret_when_environment_is_empty(self):
+        with patch.dict(os.environ, {"DJANGO_API_URL": ""}), patch(
+            "ui.api_client.st",
+            SimpleNamespace(
+                secrets={"DJANGO_API_URL": "https://render.example/api/"}
+            ),
+        ):
+            self.assertEqual(
+                api_client._get_api_base_url(), "https://render.example/api"
+            )
 
     def _get(self, history=None, fail=False):
         def get(url, timeout):

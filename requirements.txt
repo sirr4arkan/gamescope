@@ -2,6 +2,8 @@ pandas>=2.2.3,<3.0
 scikit-learn==1.9.1
 joblib>=1.4.2
 Django>=5.2,<6.0
+gunicorn>=23,<24
+whitenoise>=6.9,<7
 altair>=5.0,<7.0
 streamlit>=1.50
 requests>=2.32

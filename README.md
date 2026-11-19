@@ -250,6 +250,59 @@ observasi per kategori, total baris, dan rentang tahun dari dataset bersih yang
 sama dengan agregat grafik. Tanpa key, grafik tetap tampil dan aplikasi
 menampilkan pesan bahwa fitur AI belum dikonfigurasi.
 
+## Deployment
+
+### Django backend di Render
+
+Buat **Web Service** dari repository dengan root directory repository. Gunakan:
+
+- Build command: `bash build.sh`
+- Start command:
+  `gunicorn --chdir backend_django config.wsgi:application --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 90`
+- Health check path: `/api/metadata/`
+
+`build.sh` memasang dependency, menjalankan `collectstatic`, lalu menerapkan
+migration. Deploy akan gagal jika konfigurasi database atau koneksi Supabase
+belum siap. Isi environment variables di Render Dashboard, jangan simpan nilainya
+di repository:
+
+| Variable | Nilai |
+|---|---|
+| `DJANGO_SECRET_KEY` | Secret acak yang dibuat khusus untuk deployment |
+| `DJANGO_DEBUG` | `false` |
+| `DJANGO_ALLOWED_HOSTS` | Host service Render, misalnya `<service>.onrender.com`; hostname Render juga ditambahkan otomatis |
+| `DJANGO_CSRF_TRUSTED_ORIGINS` | `https://<service>.onrender.com` |
+| `DJANGO_SECURE_SSL_REDIRECT` | `true` |
+| `DB_ENGINE` | `postgresql` |
+| `DB_NAME` | `postgres` |
+| `DB_USER` | User koneksi Supabase |
+| `DB_PASSWORD` | Password koneksi Supabase |
+| `DB_HOST` | Host koneksi Supabase |
+| `DB_PORT` | `5432` |
+| `DB_SSLMODE` | `require` |
+| `GROQ_API_KEY` | Secret Groq backend, jika fitur penjelasan AI digunakan |
+| `GROQ_MODEL` | Model Groq yang ingin digunakan |
+
+Render menyediakan `PORT`; jangan hardcode port. Konfigurasi model, dataset
+bersih, dan metadata tetap memakai `artifacts/model_vgsales.joblib`,
+`artifacts/cleaned_vgsales.csv`, dan `artifacts/model_metadata.json` di root
+repository. WhiteNoise menyajikan aset Admin dari `STATIC_ROOT`.
+
+Setelah deploy, buat akun admin dari Render Shell dengan
+`python backend_django/manage.py createsuperuser`.
+
+### Streamlit Community Cloud
+
+Deploy `frontend_streamlit/app.py`. Pada Advanced settings → Secrets, atur:
+
+```toml
+DJANGO_API_URL = "https://<service>.onrender.com/api"
+```
+
+API client memakai environment variable `DJANGO_API_URL` jika tersedia, lalu
+fallback ke Streamlit Secrets. Frontend hanya memerlukan URL API; jangan
+memasukkan kredensial Supabase atau Groq ke Streamlit.
+
 ## Pengujian
 
 Setelah training, jalankan:

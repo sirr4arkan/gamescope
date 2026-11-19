@@ -516,7 +516,7 @@ class DjangoAdminTests(TestCase):
         self.assertContains(response, "Prediction Management")
         self.assertContains(response, "Authentication &amp; Authorization")
         self.assertContains(response, "Prediction logs")
-        self.assertContains(response, "gamescope_admin.css")
+        self.assertContains(response, "/static/admin/css/gamescope_admin.")
 
     def test_staff_needs_model_permission_to_view_prediction_logs(self):
         user = get_user_model().objects.create_user(
